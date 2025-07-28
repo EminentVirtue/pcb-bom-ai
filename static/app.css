@@ -1,0 +1,88 @@
+html,body {
+    margin: 0;
+    height: 100%;
+}
+
+.outer {
+    display: flex;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    flex-direction: row;
+}
+.view {
+    flex: 2;
+    position: relative;
+    overflow: hidden;
+}
+
+.info {
+    flex: 2;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    margin-left: 10px;
+}
+
+.table-class {
+    border-collapse: collapse;
+    width: 100%;
+    table-layout: fixed;
+}
+.table-class td {    
+    border: 1px solid #0f0f0f;
+    padding: 8px;
+    vertical-align: top;
+    text-align: left;
+    word-wrap: break-word;
+}
+.comp-table tr {
+    padding: 10px;
+}
+.table-class th {
+    text-align: left;
+    word-wrap: break-word;
+}
+
+.table-class tr:hover {
+    background-color: rgb(21, 168, 119);
+}
+.popup {
+    display: none;
+    z-index: 1;
+    width: 50%;
+    height: 50%;
+    overflow: auto;
+    position: fixed;
+}
+.bomprompt-content {
+    padding: 20px;
+    border: 1px solid black;
+    width: 80%;
+    border-radius: 5px;
+    background-color: white;
+}
+.button-container {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+.bp-popup-button {
+    height: 50px;
+    width: 100%;
+}
+
+.bp-close-button {
+    height: 50px;
+    width: 50%;
+}
+.bp-save-button {
+    height: 50px;
+    width: 50%;
+}
+.bp-close-button:hover {
+    opacity: 50%;
+}
+.bp-save-button:hover {
+    opacity: 50%;
+}

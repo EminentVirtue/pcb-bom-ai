@@ -1,0 +1,23 @@
+
+
+title = "File for general project configurations"
+
+[selected-api]
+api = "digikey"
+bom-format = "ki-cad"
+
+[list-api]
+api-list = ["digikey", "mouser"]
+
+[embeddings-file]
+file = "databases/all_embeddings.pkl"
+
+[digikey-databases]
+resistor = "databases/dk_resistor.csv"
+capacitor = "databases/dk_capacitor.csv"
+inductor = "databases/dk_inductor.csv"
+
+[digikey-pricing-databases]
+resistor = "databases/dk_resistor_prices.csv"
+capacitor = "databases/dk_capacitor_prices.csv"
+inductor = "databases/dk_inductor_prices.csv"

@@ -1,0 +1,63 @@
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <title>PCB Viewer</title>
+    <link rel="stylesheet" href = "/static/app.css" />
+  </head>
+  <body>
+    <div class ="outer">
+    <div id="view" class ="view"></div>
+    <div class ="info">
+      <div id = "bomPrompt" class = "popup">
+      <div class = "bomprompt-content">
+        <h2 id = "bp-designator"></h2>
+        <div class = "button-container">
+          <button id = "closeBpPopup" class="bp-close-button">
+            Cancel
+          </button>
+          <button id = "saveBpChoice" class="bp-save-button">
+            Save to BOM
+          </button>
+        </div>
+      </div>
+    </div>
+        <input type = "text" id = "search" placeholder="Search Components..." />
+        <p>Add 3D PCB File</p>
+        <input type = "file" id="pcbUpload" accept = ".glb"/>
+        <p>Add position file</p>
+        <input type = "file" id ="posUpload" accept = ".pos"/>
+        <p>Add BOM file</p>
+        <input type = "file" id ="bomUpload" accept = ".csv"/>
+        
+        <p>Current Component Selected</p>
+        <p id="currComp"></p>
+        <table id = "comp-table" class="table-class">
+        <colgroup>
+        <col style="width: 10%">
+        <col style="width: 10%">
+        <col style="width: 15%">
+        <col style="width: 10%">
+        <col style="width: 10%">
+        <col style="width: 35%">
+        <col style="width: 10%">
+  </colgroup>
+            <thead>
+                <tr>
+                    <th>Manufacturer</th> 
+                    <th>Quantity</th>
+                    <th>Product Number</th>
+                    <th>Value</th>
+                    <th>Footprint</th>
+                    <th>Standard Pricing</th>
+                    <th>URL</th>
+                </tr>
+            </thead>
+
+            <tbody></tbody>
+        </table>
+    </div>
+    </div>  
+    <!-- <script src = "playcanvas.js"></script> -->
+    <script type= "module" src = "/static/app.js" ></script>
+  </body>
+</html>

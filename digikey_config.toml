@@ -1,0 +1,28 @@
+
+title = "Component query selection for digikey configuration file"
+
+[components]
+# tracking = ["resistor", "capacitor", "inductor"]
+tracking = ["resistor"]
+
+[fields_common]
+fields = ["quantity_available","unit_price","product_url","manufacturer_product_number"]
+special_fields = ["manufacturer", "product_status", "standard_pricing"]
+
+[resistor]
+fields = ["Resistance","Tolerance", "Power (Watts)", "Composition", "Package",
+"Temperature Coefficient"]
+keywords = ["Chip Resistor, Surface Mount"]
+handler = "digikey_part_handlers.dk_rhandler"
+
+[capacitor]
+fields = ["Capacitance", "Tolerance", "Voltage - Rated", "Temperature Coefficient",
+"Operating Temperature", "Ratings", "Applications", "Mounting Type", "Package / Case",
+]
+keywords = ["Capacitor, Surface Mount"]
+handler = "digikey_part_handlers.dk_chandler"
+
+[inductor]
+fields = []
+keywords = ["Inductor, Surface Mount"]
+handler = "digikey_part_handlers.dk_ihandler"
