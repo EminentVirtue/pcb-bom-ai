@@ -17,8 +17,6 @@ import importlib
 import digikey
 from digikey.v4.productinformation import KeywordRequest
 from components import *
-
-import ast
 import logging
 
 DIGIKEY_CONFIG_FILE = "digikey_config.toml"
@@ -28,7 +26,7 @@ The total number of records we should query from digikey to make our parts catal
 The max number we can query at a time is 50. Thus, if we wanted 500 parts in our catalogue,
 then we would need a total of 10 queries
 """
-DIGIKEY_QUERY_NUMBER = 50
+DIGIKEY_QUERY_NUMBER = 150
 DIGIKEY_MAX_QUERY = 50
 
 class DigikeyAPIHook:
@@ -101,10 +99,19 @@ class DigikeyAPIHook:
                     search_request = KeywordRequest(keywords=search_keywords, limit=DIGIKEY_MAX_QUERY,
                                                     offset = current_record_pos)
                     response = digikey.keyword_search(body=search_request)
-                    product_list.append(response.products)
+
+                    if response:
+                        product_list.append(response.products)
+                    
                     current_record_pos += DIGIKEY_MAX_QUERY
 
+                if len(product_list) == 0:
+                    continue
+
                 handler = self.digikey_component_handlers.get(component)
+
+                with open("databases/test_results.txt", 'w') as f:
+                    f.write(str(product_list))
 
                 if handler:
 

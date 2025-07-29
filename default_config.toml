@@ -9,6 +9,10 @@ bom-format = "ki-cad"
 [list-api]
 api-list = ["digikey", "mouser"]
 
+[bom-headers]
+kicad = ["Id", "Designator", "Footprint", "Quantity", "Designation", "Supplier and ref",
+"Tolerance", "Voltage - Rated", "Product URL", "Datasheet URL"]
+
 [embeddings-file]
 file = "databases/all_embeddings.pkl"
 
@@ -16,8 +20,16 @@ file = "databases/all_embeddings.pkl"
 resistor = "databases/dk_resistor.csv"
 capacitor = "databases/dk_capacitor.csv"
 inductor = "databases/dk_inductor.csv"
+crystal = "databases/dk_crystal.csv"
+regulator = "databases/dk_regulator.csv"
+flash-memory = "databases/dk_flash_memory.csv"
+connector = "databases/dk_connector.csv"
 
 [digikey-pricing-databases]
 resistor = "databases/dk_resistor_prices.csv"
 capacitor = "databases/dk_capacitor_prices.csv"
 inductor = "databases/dk_inductor_prices.csv"
+crystal = "databases/dk_crystal_prices.csv"
+regulator = "databases/dk_regulator_prices.csv"
+flash-memory = "databases/dk_flash_memory_prices.csv"
+connector = "databases/dk_connector_prices.csv"

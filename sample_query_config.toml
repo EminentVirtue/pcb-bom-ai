@@ -1,0 +1,49 @@
+# Just an example to show how to automate queries for a BOM
+[query]
+queries = ["query-one", "query-two", "query-three", "query-four",
+"query-five", "query-six", "query-seven", "query-eight", "query-nine",
+"query-ten", "query-eleven"]
+
+[query-one]
+designator = ["C4,C1,C17"]
+query = "0805 (2012 Metric),10 µF,16V,X5R,General Purpose"
+
+[query-two]
+designator = ["R1","R5"]
+query = "Cheapest,YAGEO, Resistance is 100 ohms,Power Rating is 0.25 W, Footprint is 1206 (3216 Metric)"
+
+[query-three]
+designator = ["C13,C5,C9,C12,C14,C7,C11,C16,C6,C15"]
+query = "Samsung,0.1 µF,General Purpose,Surface Mount,0603 (1608 Metric)"
+
+[query-four]
+designator = ["C10,C8"]
+query = "KEMET, Active, 1 µF, Bypass,Decoupling, 0402"
+
+[query-five]
+designator=["R3","R4"]
+query = "Susumu, 311498, Resistance is 100 kOhms,Power(Watts) is 0.125W, 1/8W, 0805 (2012 Metric)"
+
+[query-six]
+designator=["Y1"]
+query = "EPSON, MHz Crystal,24 MHz, -40°C ~ 90°C"
+
+[query-seven]
+designator =["C2,C3"]
+query = "Taiyo Yuden, Active, Cut Tape for 0.08, 50V, 0402"
+
+[query-eight]
+designator = ["U2"]
+query = "Flash, Macronix, Active, 64Mbit, 133 MHz, 8-SOIC"
+
+[query-nine]
+designator = ["J3,J4"]
+query = "Connector Würth-elektronik, Male Pin, 2, 20,(2.54mm), Through Hole"
+
+[query-ten]
+designator = ["J2"]
+query = "AMP Connector, 2,1, 10000 in Bulk for 2442.2, (2.54mm)"
+
+[query-eleven]
+designator = ["U1"]
+query = "Regulator, Texas Instruments in Cut Tape 3.3V with 150 mA output current"

@@ -19,6 +19,15 @@ FIELD_MANUFACTURER_PN = "manufacturer_product_number"
 FIELD_DK_URL = "product_url"
 FIELD_CAPACITANCE = "Capacitance"
 FIELD_RESISTANCE = "Resistance"
+FIELD_FREQUENCY = "Frequency"
+FIELD_FOOTPRINT = "Package / Case"
+FIELD_VOLTAGE_OUT = "Voltage - Output (Min/Fixed)"
+FIELD_TOLERANCE = "Tolerance"
+FIELD_POWER = "Power (Watts)"
+FIELD_VR = "Voltage - Rated"
+FIELD_DATASHEET_URL = "datasheet_url"
+FIELD_MEMORY_SIZE = "Memory Size"
+FIELD_MATING = "Pitch - Mating"
 
 FIELD_TAPE_REEL = "Tape & Reel (TR)"
 FIELD_CUT_TAPE = "Cut Tape (CT)"
@@ -34,7 +43,17 @@ DIGIKEY_FIELD_TO_HEADER = {
     FIELD_DK_URL: HEADER_URL,
     FIELD_MANUFACTURER_PN: HEADER_PRODUCT_NUM,
     FIELD_CAPACITANCE : HEADER_VALUE,
-    FIELD_RESISTANCE: HEADER_VALUE
+    FIELD_RESISTANCE: HEADER_VALUE,
+    FIELD_FREQUENCY: HEADER_VALUE,
+    FIELD_RESISTANCE: HEADER_VALUE,
+    FIELD_FOOTPRINT: HEADER_FOOTPRINT,
+    FIELD_VOLTAGE_OUT: HEADER_VALUE,
+    FIELD_VR: HEADER_VR,
+    FIELD_TOLERANCE: HEADER_TOLERANCE,
+    FIELD_POWER: HEADER_POWER,
+    FIELD_MATING: HEADER_VALUE,
+    FIELD_DATASHEET_URL: HEADER_DATASHEET_URL,
+    FIELD_MEMORY_SIZE: HEADER_VALUE
 }
 
 # For parameters having a nested map as the value
@@ -70,7 +89,7 @@ def handle_special_field(product, field):
             for sp in standard_pricing:
                 break_quantity = sp["break_quantity"]
                 total_price = sp["total_price"]
-                prices_query.append(str(break_quantity) +  f" in {name} for {total_price} ")
+                prices_query.append(str(break_quantity) + f" in {name} for {total_price} ")
                 prices_plain.append(str(break_quantity) + f" for {total_price}")
 
             prices_db.append((" ").join(prices_plain))
@@ -99,7 +118,7 @@ def generic_component_handler(component:int,products: Any, configs: Any):
     
     for i in range(num):
         
-        if i < cfields_len:
+        if i <= cfields_len:
             headers.append(common_fields[i])
         if i < cfields_special_len:
             headers.append(common_fields_special[i])
@@ -130,7 +149,11 @@ def generic_component_handler(component:int,products: Any, configs: Any):
         # Handle component specific fields
         for field in fields:
             field_data = next((p['value_text'] for p in parameters if p['parameter_text'] == field), None)
-            row.append(field_data)
+
+            if field_data:
+                row.append(field_data)
+            else:
+                row.append("")
 
         entry.append(row)
 
@@ -145,4 +168,19 @@ def dk_chandler(data:Any, configs:Any):
 
 def dk_ihandler(data:Any, configs:Any):
     return generic_component_handler(component=COMPONENT_INDUCTOR, products=data, configs=configs)
+
+def dk_cryshandler(data:Any, configs:Any):
+    return generic_component_handler(component=COMPONENT_CRYSTAL, products=data, configs=configs)
+
+def dk_reghandler(data:Any, configs:Any):
+    return generic_component_handler(component=COMPONENT_REGULATOR, products=data, configs=configs)
+
+def dk_flashhandler(data:Any, configs:Any):
+    return generic_component_handler(component=COMPONENT_FLASH, products=data, configs=configs)
+
+def dk_connector_handler(data:Any, configs:Any):
+    return generic_component_handler(component=COMPONENT_CONNECTOR,products=data, configs=configs)
+
+def dk_connectorhandler(data:Any, configs:Any):
+    return generic_component_handler(component=COMPONENT_CONNECTOR , products=data, configs=configs)
 

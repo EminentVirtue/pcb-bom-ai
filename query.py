@@ -3,7 +3,6 @@ from digikey_part_handlers import DIGIKEY_FIELD_TO_HEADER
 from components import *
 from headers import *
 import threading
-import pandas as pd
 import openai
 import faiss
 import pickle 
@@ -52,19 +51,23 @@ class Query:
     def get_current_rows(self):
         return self.current_rows
     
-    def initialize_parts_query_engine(self):
+    def initialize_parts_query_engine(self, join=False):
 
         target = None
 
         if self.api == API_DIGIKEY:
             if self.remake_query:
-                target = self.prepare_component_library
+                target = self.make_new
             else:
                 target = self.prepare_component_library_from_database
 
         if target:
             init_thread = threading.Thread(target=target)
             init_thread.start()
+
+            if join:
+                init_thread.join()
+
 
     def get_embedding(self, text, model="text-embedding-3-small"):
         embedding = openai.embeddings.create(input=[text], model=model)
@@ -114,6 +117,19 @@ class Query:
         
         return data
 
+    def generate_search_embeddings(self):
+
+        embeddings = []
+
+        for component in COMPONENT_SPECIFIC:
+            embeddings.append(self.get_embedding(component))
+
+        return embeddings
+    
+    def make_new(self):
+
+        self.generate_new_embeddings_for_components()
+
     # This would need to be invoked for whenever the database changes
     def generate_new_embeddings_for_components(self):
     
@@ -127,8 +143,7 @@ class Query:
                 if db is not None:
                     embeddings,rows, positions = self.prepare_component_library(db)
                     pricing_db = self.get_pricing_database_for_component(component)
-                    pricing_data = self.load_pricing_database(pricing_db) if pricing_db else None  
-
+                    pricing_data = self.load_pricing_database(pricing_db) if pricing_db else None 
                     
                     self.component_embeddings[component] = {
                         "embeddings": embeddings,
@@ -137,6 +152,10 @@ class Query:
                         "pricing": pricing_data
                     }
 
+                    
+            self.component_embeddings[COMPONENT_ANY] = {
+                "embeddings": self.generate_search_embeddings()
+            }
             self.save_embeddings()
 
         else:
@@ -158,7 +177,10 @@ class Query:
 
     def convert_embeddings_to_index(self, embeddings:Any):
         embeddings_matrix = np.array(embeddings).astype("float32")
-        index = faiss.IndexFlatL2(len(embeddings_matrix[0]))
+        # index = faiss.IndexFlatL2(len(embeddings_matrix[0]))
+        faiss.normalize_L2(embeddings_matrix)
+        index = faiss.IndexFlatIP(embeddings_matrix.shape[1])
+        # index.add(embeddings_matrix)
         index.add(embeddings_matrix)
         return index 
     
@@ -193,7 +215,11 @@ class Query:
             # Iterate over each row in the CSV file
             for row in csv_reader:
                 
-                text = ' '.join(row)
+                for contents in row:
+                    if not contents.startswith("https") and not contents.startswith("//mm.digikey"):
+                        text += contents
+
+                # text = ' '.join(row)
                 embedding = self.get_embedding(text)
                 component_embeddings.append(embedding)
                 rows.append(row)
@@ -204,8 +230,17 @@ class Query:
         # FAISS L2 norm requires embeddings to be in matrix form
         # It also requires you to specify the dimensions of the matrix
         # For OpenAI embeddings, this is 1536
+
+        """
+        Code for Euclidean distance indexing
+        """
+        # embeddings_matrix = np.array(component_embeddings).astype("float32")
+        # index = faiss.IndexFlatL2(len(embeddings_matrix[0]))
+        # index.add(embeddings_matrix)
+
         embeddings_matrix = np.array(component_embeddings).astype("float32")
-        index = faiss.IndexFlatL2(len(embeddings_matrix[0]))
+        faiss.normalize_L2(embeddings_matrix)
+        index = faiss.IndexFlatIP(embeddings_matrix.shape[1])
         index.add(embeddings_matrix)
 
         return [component_embeddings, rows, header_positions]
@@ -231,26 +266,54 @@ class Query:
                     "pricing" : pricing_data 
                 }
 
+        search_embeddings = all_embeddings[COMPONENT_ANY]["embeddings"]
+        search_index = self.convert_embeddings_to_index(search_embeddings)
+        self.indices[COMPONENT_ANY] = {
+            "index": search_index
+        }
+
         print("Components library completed")
 
-    def do_query(self, query:str):
+    def do_search(self, component,query_vector):
+        if component:
+            search_index = self.indices[component]["index"]
+            rows = self.indices[component]["rows"]
+            distances,indices = search_index.search(query_vector, self.results_to_consider)
+            flat_indices = np.array(indices).flatten().tolist()
+            flat_distances = np.array(distances).flatten().tolist()
 
-        print("Doing query ", query)
+            found_data = []
+            for index in flat_indices:
+                found_data.append(rows[index])
+
+            return [self.prepare_rows(component, found_data), flat_indices, flat_distances]
+        else:
+            print("Invalid component to do query") 
+
+    def do_query(self, query:str, designator:str, auto_bom = False):
+
         embedding = self.get_embedding(query)
+        component = self.designator_to_component(designator)
         query_vector = np.array([embedding]).astype("float32")
+        faiss.normalize_L2(query_vector)
 
-        # Determine which index we should query
-        search_index = self.indices["resistor"]["index"]
-        rows = self.indices["resistor"]["rows"]
-        distances,indices = search_index.search(query_vector, self.results_to_consider)
-        flat_indices = np.array(indices).flatten().tolist()
-        # flat_distances = np.array(distances).flatten().tolist()
+        if component is COMPONENT_ANY:
+            search_index = self.indices[COMPONENT_ANY]["index"]
+            distances,indices = search_index.search(query_vector, self.results_to_consider)
+            flat_indices = np.array(indices).flatten().tolist()
+            flat_distances = np.array(distances).flatten().tolist()
+            best_search = flat_indices[0]
 
-        found_data = []
-        for index in flat_indices:
-            found_data.append(rows[index])
+            if best_search <= len(COMPONENT_SPECIFIC_NAME):
+                results, indices, flat_distances = self.do_search(COMPONENT_SPECIFIC_NAME[best_search], query_vector)   
+        else:
 
-        return self.prepare_rows("resistor", found_data) 
+            results, indices, flat_distances =  self.do_search(component, query_vector)
+
+        if auto_bom:
+            return [results, indices, flat_distances]
+        else:
+            return results
 
     def prepare_rows(self, component, rows):
         positions = self.indices[component]["header_positions"]
@@ -259,7 +322,7 @@ class Query:
 
         if rows_len <= 0:
             return data
-
+        
         for i in range(rows_len):
             data_map = {}
             for header in HEADER_LISTING:
@@ -270,7 +333,7 @@ class Query:
                     try:
                         index = positions[header]
 
-                        if index < rows_len:
+                        if int(index) <= len(rows[i]):
                             data_map[header] = rows[i][index]
 
                     except KeyError:
@@ -281,14 +344,8 @@ class Query:
         self.current_rows = data
         return data
 
-    # When a new reference designator (say R24) has been clicked, just return the 
-    # rows in the catalogue corresponding to the designator, in this case, resistor
-    def do_designator_query(self, designator: str):
-
-        data = []
-        rows = []
-        positions = {}
-        component = ""
+    def designator_to_component(self, designator):
+        component = None
 
         if designator.startswith("R"):
             component = COMPONENT_TOML_MAPPING_ID[COMPONENT_RESISTOR]
@@ -296,50 +353,35 @@ class Query:
             component = COMPONENT_TOML_MAPPING_ID[COMPONENT_INDUCTOR]
         elif designator.startswith("C"):
             component = COMPONENT_TOML_MAPPING_ID[COMPONENT_CAPACITOR]
+        elif designator.startswith("Y"):
+            component = COMPONENT_TOML_MAPPING_ID[COMPONENT_CRYSTAL]
+        elif designator.startswith("U"):
+            component = COMPONENT_ANY
+        elif designator.startswith("J"):
+            component = COMPONENT_ANY
+
+        return component
+
+    # When a new reference designator (say R24) has been clicked, just return the 
+    # rows in the catalogue corresponding to the designator, in this case, resistor
+    def do_designator_query(self, designator: str):
+        rows = []
+        component = self.designator_to_component(designator)
+
+        if component is COMPONENT_ANY:
+            return None
         else:
-            print("Unsupported designator!")
-
-        rows = self.indices[component]["rows"]
+            rows = self.indices[component]["rows"]
+        
         return self.prepare_rows(component, rows)
-        # rows_len = len(rows)
-
-        # if rows_len <= 0:
-        #     return data
-
-        # for i in range(rows_len):
-        #     data_map = {}
-        #     for header in HEADER_LISTING:
-
-        #         if header == HEADER_STANDARD_PRICING:
-        #             data_map[header] = self.get_standard_pricing_data(component, i)
-        #         else:
-        #             try:
-        #                 index = positions[header]
-
-        #                 if index < rows_len:
-        #                     data_map[header] = rows[i][index]
-
-        #             except KeyError:
-        #                 pass
-                
-        #     data.append(data_map)
-
-        # return data
 
 q = Query()
 digikey_query = DigikeyAPIHook(default_configs=q.get_default_configs())
 
-if __name__ == "__main__":
-
-
-    digikey_query.init()
-    digikey_query.update_parts_catalogue()
+def main():
+    # digikey_query.init()
+    # digikey_query.update_parts_catalogue()
     q.generate_new_embeddings_for_components()
-    # q.initialize_parts_query_engine()
-    q.prepare_component_library_from_database()
-    # print("Starting query")
-    # q.do_query("Manufacturer is Yageo")
-    # q.do_query("Panasonic Electronic Components 10000 for 45.8")
-    # q.do_query("10 kOhms YAGEO 5000 for 15.3")
-    # q.do_designator_query("R4")
-    # q.do_query("KOA Speer Electronics 10 kOhms 0.1W 5000 for 22.1")
+
+if __name__ == "__main__":
+    main()

@@ -2,8 +2,6 @@
 import * as pc from './playcanvas.mjs'
 
 const canvas = document.createElement('canvas');
-canvas.style.width = "100%";
-canvas.style.height = "100%";
 canvas.style.display = "block";
 
 pc.WasmModule.setConfig('Ammo', {
@@ -71,11 +69,10 @@ component_search.addEventListener("keyup", handle_query_request);
 app.start();
 app.mouse.on(pc.EVENT_MOUSEDOWN, on_mouse_down);
 
-var previous_material = null;
-
 const board_width_mm = 51;
 let pcb_mm_to_world = 1.1;
 
+var selected_index = 0;
 
 function on_mouse_down(event) {
 
@@ -85,14 +82,13 @@ function on_mouse_down(event) {
         const to = camera.camera.screenToWorld(event.x, event.y, camera.camera.farClip);
         const result = app.systems.rigidbody.raycastFirst(from, to);
 
-        if (result ) {
+        if (result) {
             const entity = result.entity;
             curr_component.textContent = entity.name;
         
             get_options_for_component(entity.name);
         }
         else{
-            console.log("miss");
         }
     }
 }
@@ -122,10 +118,8 @@ function format_row(data)
         data["Quantity"],
         data["Product Number"],
         data["Value"],
-        // data["Footprint"],
-        "0603",
+        data["Footprint"],
         format_standard_pricing(data["Standard Pricing"]),
-        // data["Standard Pricing"],
         format_hyperlinks(data["URL"])
     ]
 
@@ -140,33 +134,38 @@ function toggle_popup(popup,visible)
         popup.style.display = "none";
 }
 
-function handle_component_selected(component)
-{
-    console.log("Clicked component ", component)
+function handle_component_selected(event, component)
+{   
+    console.log("Clicked component ", component, event)
 
+    const clicked_row = event.target.closest('tr');
     toggle_popup(bom_popup, true);
-
     const replace_string = "Replace " + curr_component.textContent 
     + " With " + component["Product Number"] + "?";
-
     document.getElementById("bp-designator").innerHTML = replace_string;
+    selected_index = clicked_row.rowIndex > 0 ? clicked_row.rowIndex - 1 : clicked_row.rowIndex;
 }
 
 function handle_save_bom_item()
-{
+{   
+    console.log("SELDCTED INDEX ", selected_index);
+    fetch(`/update-bom?des=${curr_component.textContent}&index=${selected_index}`)
+    .then(res => res.json())
+    .then(data => {
+        console.log(data);
+    }); 
 
+    toggle_popup(bom_popup, false);
 }
 
 function handle_query_request(event)
 {   
-    console.log("Handling query request");
-
     if(event.key == 'Enter')
     {
         let content = component_search.value
         if(content != "")
         {
-            fetch(`/request-query?content=${content}`)
+            fetch(`/request-query?content=${content}&des=${curr_component.textContent}`)
             .then(res => res.json())
             .then(data => {
                 populate_table(data);
@@ -175,7 +174,6 @@ function handle_query_request(event)
         content = "";
         component_search.value = content;
     }
-
 }
 
 function populate_table(data)
@@ -187,14 +185,14 @@ function populate_table(data)
         const row = table_body.insertRow();
         const contents = format_row(product);
         row.data = product
-        
-        row.addEventListener("click", () => {
-            handle_component_selected(product)
+        row.addEventListener("click", (event) => {
+            handle_component_selected(event, product)
         })
             
         contents.forEach(c => {
             const cell = row.insertCell();
             cell.innerHTML = c;
+
         });
     })
 }
@@ -209,21 +207,14 @@ function close_bp_popup()
  * component options when one has been selected
  */
 function get_options_for_component(component_name) 
-{
-    fetch(`/request-parts?name=${component_name}&y=${component_name}`)
+{   
+    fetch(`/request-parts?name=${component_name}`)
     .then(res => res.json())
     .then(data => {
-        populate_table(data);
+
+        if(data)
+            populate_table(data);
     });
-}
-
-/**
- * @brief Handles updating the bill of materials reference designator item
- * based on the selection from the user
- * @param item 
- */
-function update_bom_item(item) {
-
 }
 
 /**
@@ -260,7 +251,6 @@ function adjust_camera_view(entity) {
     const extents = bounding_box.halfExtents;
     const entity_center = bounding_box.center;
 
-
     /**
      * Since the camera is looking straight down, then the only dimensions
      * in the vector that are changing are X,Z - that is, the total distance
@@ -269,7 +259,7 @@ function adjust_camera_view(entity) {
      * point of the entity, therefore, we need to add that to the y_pos as well to clear
      * the highest point.
      */
-    const max_magnitude = extents.z > extents.x ? extents.z : extents.x;
+    const max_magnitude = Math.max(extents.x, extents.z);
     const camera_y_pos = entity_center.y + extents.y + max_magnitude * 2;
 
     /**
@@ -286,53 +276,17 @@ function adjust_camera_view(entity) {
      * This places entity x center in camera center which is the center of the canvas
      */
 
+    const camera_ortho_height = Math.max(extents.x, extents.y);    
     const canvas_bounds = canvas.getBoundingClientRect();
     const center_of_canvas = canvas_bounds.width / 2;
     const aspect_ratio = canvas_bounds.width / canvas_bounds.height;
-    const total_view_width = 2 * camera.camera.orthoHeight * aspect_ratio;
-    const offset = Math.round(center_of_canvas * (total_view_width / canvas_bounds.width));
+    const total_view_width = 2 * camera_ortho_height * aspect_ratio;
+    const offset = Math.round(center_of_canvas * (total_view_width / canvas_bounds.width) 
+    - (camera_ortho_height / 2));
 
-
-    const boxSize = new pc.Vec3(5,1,5);
-    var y = 0;
-//     for(var y = 0; y < 8; y++)
-//     {
-// //   
-//         const box = new pc.Entity("box" + y);
-
-//     // Add visual shape
-//     box.addComponent("model", { type: "box" });
-
-//     // Add collider
-//     box.addComponent("collision", {
-//         type: "box",
-//         halfExtents: new pc.Vec3(2.5, 0.5, 2.5)
-//     });
-
-//     box.addComponent("rigidbody", { type: "static" }); 
-//     box.setLocalScale(5,1,5);
-
-// const mat = new pc.StandardMaterial();
-// mat.diffuse = new pc.Color(1, 0, 0);  // Red box
-// mat.update();
-// box.model.material = mat;
-
-//     const xPos = entity_center.x + offset - (y * 10);
-//     const yPos = entity_center.y + extents.y + boxSize.y / 2 + 0.05; // just above PCB
-//     const zPos = entity_center.z;
-
-//     console.log(yPos);
-//     console.log(zPos);
-//     box.setPosition(xPos, 10, zPos);
-//     app.root.addChild(box);
-
-//     // box.setPosition(camera.camera.x + (y * 10), 0, 0);
-// // box.setLocalScale(0.75, 0.75, 1);
-
-// }
     camera.setPosition(entity_center.x + offset, camera_y_pos + offset, entity_center.z);
     camera.lookAt(entity_center.x + offset, entity_center.y, entity_center.z);
-    camera.camera.orthoHeight = extents.z + 30;
+    camera.camera.orthoHeight = camera_ortho_height + (extents.z * 2);
     pcb_mm_to_world = (extents.x * 2) / board_width_mm;
 }
 
@@ -370,7 +324,6 @@ function handle_pos_file_upload(event)
     });
 }
 
-var incr = 0;
 /**
  * @brief Create a collision box for each PCB component in order to 
  * use PC raytracing on them
@@ -393,22 +346,18 @@ function create_component_collision_boxes(component_name, x, y, z, width, height
     box.addComponent("collision", {
         type: "box",
         halfExtents: new pc.Vec3(box_size.x / 2, box_size.y / 2, box_size.z / 2)
-        // halfExtents: new pc.Vec3(2.5,0.5, 2.5)
     });
     
     box.addComponent("rigidbody", { type: "static" }); 
     box.setLocalScale(box_size);
 
-    const mat = new pc.StandardMaterial();
-    mat.diffuse = new pc.Color(1, 0, 0);
-    mat.update();
-    box.model.material = mat;
+    const box_mat = new pc.StandardMaterial();
+    box_mat.diffuse = new pc.Color(1,1,1);
+    box_mat.opacity = 0.0; /* Make collision box transparent */
+    box_mat.blendType = pc.BLEND_NORMAL;
+    box_mat.update();
 
-    const xPos = x;
-    // const yPos = entity_center.y + extents.y + boxSize.y / 2 + 0.05; // just above PCB
-    // const zPos = entity_center.z;
-    const yPos = 30.55
-    const zPos = 3.76;
+    box.model.material = box_mat;
 
     /**
      * Since we're doing an orthographic projection, Y axis is constant and the vertical
@@ -417,7 +366,6 @@ function create_component_collision_boxes(component_name, x, y, z, width, height
      */
     box.setPosition(x, 5,y * -1);
     app.root.addChild(box);
-    incr++;
 }
 /**
  * @brief Takes the user supplied 3D PCB view and renders it to scene
@@ -467,11 +415,8 @@ function on_pcb_loaded(error, asset) {
 
         /* Adjust the current camera */
         adjust_camera_view(pcb_entity);
-
+        
+        /* This will initialize the parts engine */
         fetch("/update-qengine")
     }
-}
-
-function show_upload_status(message, type) {
-
 }

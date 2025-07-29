@@ -1,1 +1,13 @@
+inflection
+certauth
+requests
+retrying
+urllib3
+responses
+six
+certifi
+setuptools
+openai
+faiss-cpu
 pandas
+tomllib

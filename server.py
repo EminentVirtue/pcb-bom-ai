@@ -1,11 +1,12 @@
 from flask import *
 import os
 from query import Query
-from components import BOM_FORMAT_KICAD, API_DIGIKEY
+from components import BOM_FORMAT_KICAD, API_DIGIKEY, MULTIPLIERS
 import csv
 from bom import KicadBomItem, KicadBom
 from typing import Any
 from headers import *
+import re
 
 app = Flask(__name__)
 UPLOAD_PATH = 'uploads'
@@ -24,6 +25,17 @@ PACKAGE_0402 = "0402"
 PACKAGE_0603 = "0603"
 PACKAGE_0805 = "0805"
 PACKAGE_SOT223 = "SOT-223"
+PACKAGE_SOIC8 = "SOIC-8"
+PACKAGE_PINHEADER = "PinHeader"
+PACKAGE_CRYSTAL = "Crystal"
+
+PINHEADER_PINCOUNT_REGEX = r'(\d+)x(\d+)'
+PINHEADER_ORIENTATION_REGEX = r'(Vertical|Horizontal)'
+PACKAGE_PITCH_REGEX = r'P([0-9.]+)mm'
+PACKAGE_CRYSTAL_REGEX = r'([0-9.]+)x([0-9.])+mm'
+
+PINHEADER_VERTICAL = "Vertical"
+PINHEADER_HORIZONTAL = "Horizontal"
 
 query = Query()
 kicad_bom = KicadBom()
@@ -67,7 +79,46 @@ def footprint_to_dimensions(package):
     elif PACKAGE_0805 in package:
         width = 2.0
         height = 1.25
-    
+    elif PACKAGE_SOT223 in package:
+        width = 6.50
+        height = 6.70
+    elif PACKAGE_SOIC8 in package:
+        width = 3.9
+        height = 4.9
+    elif PACKAGE_PINHEADER in package:
+        re_match = re.search(PINHEADER_PINCOUNT_REGEX, package)
+
+        if re_match:
+            rows = int(re_match.group(1))
+            cols = int(re_match.group(2))
+
+        re_match = re.search(PACKAGE_PITCH_REGEX, package)
+        if re_match:
+            pitch_mm = float(re_match.group(1))
+
+        width = rows * pitch_mm
+        height = cols * pitch_mm
+        
+        re_match = re.search(PINHEADER_ORIENTATION_REGEX, package, re.IGNORECASE)
+        if re_match:
+            orientation = re_match.group(1)
+
+            if orientation == PINHEADER_VERTICAL:
+                temp = width
+                width = height
+                height = temp
+            
+    elif PACKAGE_CRYSTAL in package:
+        re_match = re.search(PACKAGE_CRYSTAL_REGEX, package)
+
+        if re_match:
+            width = re_match.group(1)
+            height = re_match.group(2)
+    else:
+        # Attempt to decipher the dimensions
+        pass
+
+
     """
     TODO for components that don't fit a specific criteria, we could use ML
     to match a package to its best fit. For example, a package 'USB-B...' may
@@ -95,20 +146,23 @@ def get_parts():
     content = query.do_designator_query(cname)
     return jsonify(content)
 
-@app.route('/update-bom', methods = ['POST'])
+@app.route('/update-bom')
 def update_part():
     designator = request.args.get('des')
     index = request.args.get('index')
 
-    
+    print("Index is ")
+    print(index)
 
-    pass
+    update_part_kidcad(designator, int(index))
 
+    return jsonify({'message': 'Updated BOM item'})
 
 @app.route('/request-query')
 def request_from_query():
     query_content = request.args.get('content')
-    response = query.do_query(query_content)
+    query_designator = request.args.get('des')
+    response = query.do_query(query_content, query_designator)
     return jsonify(response)
 
 @app.route("/update-qengine")
@@ -117,6 +171,14 @@ def update_component_engine():
     query.initialize_parts_query_engine()
     return jsonify({'message': 'Updated component engine!'})
 
+@app.route('/export-bom')
+def export_current_bom():
+    return jsonify({'message': 'Export successful'})
+
+def test_export_bom(bom_contents):
+    with open("databases/test_bom.csv",'w') as csv_file:
+        csv_writer = csv.writer(csv_file, delimiter=';', quotechar='"', quoting=csv.QUOTE_ALL)
+        csv_writer.writerows(bom_contents)
 
 @app.route('/upload', methods=['POST'])
 def handle_files():
@@ -142,23 +204,71 @@ def handle_files():
                         
                         comp = designator_mapping[pos]
                         height, width = footprint_to_dimensions(comp["PACKAGE"])
+                        
+                        x = pos[0]
+                        y = pos[1]
+                        
+                        if PACKAGE_PINHEADER in comp["PACKAGE"] and int(float(comp["ROT"])) == 0:
+                            x_pos = float(x)
+                            y_pos = float(y)
 
-                        collision_box_metadata.append({
-                            "name": comp["REF"],
-                            "x": pos[0],
-                            "y": pos[1],
-                            "z": 0,
-                            "width": width,
-                            "height" : height,
-                            "depth" : 0.5
-                        })
+                            collision_box_metadata.append({
+                                "name": comp["REF"],
+                                "x": x_pos + ((width / 2) if x_pos < 0 else 0),
+                                "y": y_pos - (height / 2),
+                                "z": 0,
+                                "width": width,
+                                "height" : height,
+                                "depth" : 0.5
+                            })
+
+                        else:
+                            collision_box_metadata.append({
+                                "name": comp["REF"],
+                                "x": x,
+                                "y": y,
+                                "z": 0,
+                                "width": width,
+                                "height" : height,
+                                "depth" : 0.5
+                            })
+
             return jsonify(collision_box_metadata)
-
                         
         except FileNotFoundError:
             pass
     elif ".csv" in file.filename:
         return handle_bom_file(filepath)
+
+"""
+Since we're using a value to bom item mapping, the values
+need to be normalized. The BOM may have a value as 100k, but the
+API may have the value as 100 kOhm
+"""
+def normalize_bom_value(item):
+
+    item_norm = item.upper()
+
+    # Replace special symbols such as µ 
+    item_norm = item_norm.replace("µ", "U")
+
+    re_match = re.match(r"^([0-9.]+)\s*([A-Z]*)$", item_norm, re.IGNORECASE)
+
+    if re_match:
+        number, unit = re_match.groups()
+        if unit:
+            normalized_value = MULTIPLIERS[unit] * float(number)
+            return normalized_value
+    return item
+
+
+def bom_items_equal(bom_item:KicadBomItem, bom_items:KicadBomItem):
+    
+    same = True
+    for item in bom_items:
+        same = bom_item.is_equal(item)
+
+    return same
 
 def update_part_kidcad(designator, index):
     
@@ -166,15 +276,44 @@ def update_part_kidcad(designator, index):
         
         content = query.get_current_rows()
 
+
         if index <= len(content):
             
             item = content[index]
+            
             kicad_bom_item = kicad_bom.get_designator_mapping()[designator]
             old_value = kicad_bom_item.get_value()
+            new_value = item.get(HEADER_VALUE)
+            supplier_info = API_DIGIKEY + "-" + item.get(HEADER_PRODUCT_NUM)
+            tolerance = item.get(HEADER_TOLERANCE)
+            voltage_rating = item.get(HEADER_VR)
+            product_url = item.get(HEADER_URL)
+            datasheet_url = item.get(HEADER_DATASHEET_URL)
+            footprint = item.get(HEADER_FOOTPRINT)
+            normalized_value = normalize_bom_value(new_value)
 
             if kicad_bom_item:
-                kicad_bom_item.set_value(item[HEADER_VALUE])
-                kicad_bom_item.set_supplier_info(item[HEADER_URL])
+                kicad_bom_item.set_value(new_value)
+                kicad_bom_item.set_supplier_info(supplier_info)
+                kicad_bom_item.set_tolerance(tolerance)
+                kicad_bom_item.set_voltage_rating(voltage_rating)
+                kicad_bom_item.set_product_url(product_url)
+                kicad_bom_item.set_datasheet_url(datasheet_url)
+                kicad_bom_item.set_footprint(footprint)
+
+            bom_item = kicad_bom.get_value_mapping().get(normalize_bom_value(old_value))
+
+            if bom_item:
+                # bom_item.remove(kicad_bom_item)
+                bom_item_new = kicad_bom.get_value_mapping().get(normalized_value)
+
+                if bom_item_new and bom_items_equal(kicad_bom_item, bom_item_new):
+                    bom_item_new.append(kicad_bom_item)
+                else:
+                    kicad_bom.get_value_mapping()[normalized_value] = []
+                    kicad_bom.get_value_mapping()[normalized_value].append(kicad_bom_item)
+
+    test_export_bom(kicad_bom.build_bom_list_for_csv())
 
 def handle_kicad_bom(bom):
 
@@ -195,6 +334,10 @@ def handle_kicad_bom(bom):
             sup_info = row["Supplier and ref"]
             id = row["Id"]
 
+            normalized_value = normalize_bom_value(value)
+            # Need to normalize the value
+            # For a resistor, the value could be 100k, 100K, 100kOhm
+
             for designator in designators:
                 bom_item = KicadBomItem(id, designator, footprint, quantity,
                                         value, sup_info)
@@ -202,15 +345,13 @@ def handle_kicad_bom(bom):
                 designator_mapping[designator] = bom_item
 
                 try:
-                    value_mapping[value].append(bom_item)
+                    value_mapping[normalized_value].append(bom_item)
                 except KeyError:
-                    value_mapping[value] = []
-                    value_mapping[value].append(bom_item)    
+                    value_mapping[normalized_value] = []
+                    value_mapping[normalized_value].append(bom_item)    
 
         kicad_bom.set_designator_mapping(designator_mapping)
         kicad_bom.set_value_mapping(value_mapping)
-
-
 
 def handle_bom_file(bom):
 

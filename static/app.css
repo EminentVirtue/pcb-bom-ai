@@ -10,7 +10,7 @@ html,body {
     overflow: hidden;
     flex-direction: row;
 }
-.view {
+.view-style {
     flex: 2;
     position: relative;
     overflow: hidden;

@@ -2,23 +2,21 @@
 title = "Component query selection for digikey configuration file"
 
 [components]
-# tracking = ["resistor", "capacitor", "inductor"]
-tracking = ["resistor"]
+# tracking = ["connector"]
+tracking = ["resistor", "capacitor", "flash-memory", "regulator", "crystal", "connector"]
 
 [fields_common]
-fields = ["quantity_available","unit_price","product_url","manufacturer_product_number"]
+fields = ["quantity_available","unit_price","product_url","manufacturer_product_number","datasheet_url"]
 special_fields = ["manufacturer", "product_status", "standard_pricing"]
 
 [resistor]
-fields = ["Resistance","Tolerance", "Power (Watts)", "Composition", "Package",
-"Temperature Coefficient"]
+fields = ["Resistance","Tolerance", "Power (Watts)", "Composition","Temperature Coefficient","Package / Case"]
 keywords = ["Chip Resistor, Surface Mount"]
 handler = "digikey_part_handlers.dk_rhandler"
 
 [capacitor]
 fields = ["Capacitance", "Tolerance", "Voltage - Rated", "Temperature Coefficient",
-"Operating Temperature", "Ratings", "Applications", "Mounting Type", "Package / Case",
-]
+"Operating Temperature", "Ratings", "Applications", "Mounting Type", "Package / Case"]
 keywords = ["Capacitor, Surface Mount"]
 handler = "digikey_part_handlers.dk_chandler"
 
@@ -26,3 +24,31 @@ handler = "digikey_part_handlers.dk_chandler"
 fields = []
 keywords = ["Inductor, Surface Mount"]
 handler = "digikey_part_handlers.dk_ihandler"
+
+[crystal]
+keywords = ["Crystal, Surface Mount"]
+fields = ["Type", "Frequency", "Frequency Stability", "Frequency Tolerance", "Load Capacitance",
+"ESR (Equivalent Series Resistance)", "Operating Mode", "Operating Temperature", "Package / Case",
+"Mounting Type"]
+handler = "digikey_part_handlers.dk_cryshandler"
+
+[regulator]
+keywords = ["Voltage Regulator", "Low Drop Out", "Linear"]
+fields = ["Output Configuration", "Output Type", "Number of Regulators", "Voltage - Input (Max)",
+"Voltage - Output (Min/Fixed)", "Voltage Dropout (Max)", "Grade","Protection Features",
+"Current - Output", "Package / Case"]
+handler = "digikey_part_handlers.dk_reghandler"
+
+[flash-memory]
+keywords = ["Flash", "Memory"]
+fields = ["Memory Type", "Memory Format", "Technology", "Memory Size", "Memory Organization",
+"Memory Interface", "Clock Frequency", "Write Cycle Time - Word, Page", 
+"Access Time", "Voltage - Supply", "Package / Case"]
+handler = "digikey_part_handlers.dk_flashhandler"
+
+[connector]
+keywords = ["Header", "Male Pins", "2", "20", "Unshrouded", "2.54MM"]
+fields = ["Contact Type", "Pitch - Mating", "Number of Positions", "Number of Rows", "Mounting Type",
+"Contact Length - Mating", "Contact Length - Post", "Insulation Height", "Current Rating (Amps)",
+"Voltage Rating"]
+handler = "digikey_part_handlers.dk_connectorhandler"
