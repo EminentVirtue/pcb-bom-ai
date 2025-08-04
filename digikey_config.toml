@@ -2,8 +2,8 @@
 title = "Component query selection for digikey configuration file"
 
 [components]
-# tracking = ["connector"]
-tracking = ["resistor", "capacitor", "flash-memory", "regulator", "crystal", "connector"]
+# tracking = ["flash-memory"]
+tracking = ["resistor", "capacitor", "flash-memory", "regulator", "crystal"]
 
 [fields_common]
 fields = ["quantity_available","unit_price","product_url","manufacturer_product_number","datasheet_url"]

@@ -1,0 +1,5 @@
+footprint: 0805; capacitance: 1e-05 F; voltage: 16V; dielectric: X7R; usage: General Purpose;
+footprint: 0402; capacitance: 1e-08 F; voltage: 16V; dielectric: X5R; usage: General Purpose;
+footprint: 0603; capacitance: 1e-07 F; voltage: 25V; dielectric: X7R; usage: Decoupling;
+footprint: 0805; capacitance: 1e-06 F; voltage: 6.3V; dielectric: Y5V; usage: Bulk Storage;
+footprint: 1206; capacitance: 4.7e-05 F; voltage: 10V; dielectric: X5R; usage: Filtering;

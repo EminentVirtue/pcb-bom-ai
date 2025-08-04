@@ -26,7 +26,7 @@ The total number of records we should query from digikey to make our parts catal
 The max number we can query at a time is 50. Thus, if we wanted 500 parts in our catalogue,
 then we would need a total of 10 queries
 """
-DIGIKEY_QUERY_NUMBER = 150
+DIGIKEY_QUERY_NUMBER = 100
 DIGIKEY_MAX_QUERY = 50
 
 class DigikeyAPIHook:
@@ -82,7 +82,6 @@ class DigikeyAPIHook:
             return None
 
         parts_to_database = {}
-        file_mode = 'a' if DIGIKEY_QUERY_NUMBER > DIGIKEY_MAX_QUERY else 'w'
 
         for component in self.tracking_components:
             keywords = self.digikey_configs[component]["keywords"]
@@ -94,7 +93,7 @@ class DigikeyAPIHook:
 
                 # We can only take 50 at a time
                 # With the API we can paginate in order to get more 'new' results than 50
-                while current_record_pos <= DIGIKEY_QUERY_NUMBER:
+                while current_record_pos < DIGIKEY_QUERY_NUMBER:
 
                     search_request = KeywordRequest(keywords=search_keywords, limit=DIGIKEY_MAX_QUERY,
                                                     offset = current_record_pos)
@@ -114,21 +113,26 @@ class DigikeyAPIHook:
                     f.write(str(product_list))
 
                 if handler:
+                    i = 0
 
                     for products in product_list:
                         database_content, prices = handler(products, self.digikey_configs)
+
+                        if i > 0:
+                            database_content.pop(0)
+
                         database_path = get_database_for_component(self.default_configs,component)
                         prices_path = database_path.replace(".csv", "") 
                         prices_path += "_prices" + ".csv"
 
                         if database_content:
                             try:
-                                with open(database_path, file_mode) as csv_file:
+                                with open(database_path, "a" if i > 0 else "w") as csv_file:
                                     csv_writer = csv.writer(csv_file)
                                     csv_writer.writerows(database_content)
                                     parts_to_database[component] = csv_file
 
-                                with open(prices_path, file_mode) as prices_csv:
+                                with open(prices_path, "a" if i > 0 else "w") as prices_csv:
                                     csv_writer = csv.writer(prices_csv)
                                     csv_writer.writerows(prices)
 
@@ -136,4 +140,6 @@ class DigikeyAPIHook:
                                 self.logger.error("Database path not found for component: %s", component)
                         else:
                             self.logger.error("Error parsing data for component: %s", component)
+                        
+                        i = i + 1
         return API_SUCCESS

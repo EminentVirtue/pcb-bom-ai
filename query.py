@@ -1,5 +1,5 @@
 from digikey_query import DigikeyAPIHook, DIGIKEY_CONFIG_FILE
-from digikey_part_handlers import DIGIKEY_FIELD_TO_HEADER
+from digikey_part_handlers import get_regex, DIGIKEY_FIELD_TO_HEADER, NORMALIZED_FIELDS, NORMALIZED_HEADER
 from components import *
 from headers import *
 import threading
@@ -8,6 +8,10 @@ import faiss
 import pickle 
 import numpy as np
 import csv
+import re
+import hashlib
+from digikey_fields import *
+import time
 
 openai.api_key = "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"
 
@@ -141,7 +145,7 @@ class Query:
                 db = self.get_database_for_component(component)
 
                 if db is not None:
-                    embeddings,rows, positions = self.prepare_component_library(db)
+                    embeddings,rows, positions, semantics= self.prepare_component_library(db)
                     pricing_db = self.get_pricing_database_for_component(component)
                     pricing_data = self.load_pricing_database(pricing_db) if pricing_db else None 
                     
@@ -149,7 +153,8 @@ class Query:
                         "embeddings": embeddings,
                         "rows": rows,
                         "header_positions": positions,
-                        "pricing": pricing_data
+                        "pricing": pricing_data,
+                        "semantics": semantics
                     }
 
                     
@@ -176,18 +181,22 @@ class Query:
         return embeddings
 
     def convert_embeddings_to_index(self, embeddings:Any):
-        embeddings_matrix = np.array(embeddings).astype("float32")
+        em = np.array(embeddings).astype("float32")
         # index = faiss.IndexFlatL2(len(embeddings_matrix[0]))
-        faiss.normalize_L2(embeddings_matrix)
-        index = faiss.IndexFlatIP(embeddings_matrix.shape[1])
+        faiss.normalize_L2(em)
+        index = faiss.IndexFlatIP(em.shape[1])
         # index.add(embeddings_matrix)
-        index.add(embeddings_matrix)
+        index.add(em)
         return index 
     
     def format_row(self, data):
         if self.api == API_DIGIKEY:
             formatted_row = digikey_query.format_row(data)
 
+
+    def hash_value(self, val):
+        return int(hashlib.sha256(str(val).encode()).hexdigest(), 16)
+        
 
     def prepare_component_library(self, component_library):
     
@@ -196,6 +205,24 @@ class Query:
         rows = []
         header_positions = {}
         text = ""
+        semantics = []
+        upper_semantics = []
+        semantic_mapping = {}
+        qualifier = ""
+
+        with open("semantics.txt",mode = 'r') as file:
+
+            semantic_upper = False
+            for line in file:
+
+                if semantic_upper:
+                    upper_semantics.append(line.strip())
+                else:
+                    semantics.append(line.strip())
+
+                if line.strip() == "====":
+                    semantic_upper = True
+
 
         # TODO maybe this should be read in chunks as to avoid memory overflow
         # If the CSV is larger than the available memory on the system
@@ -212,18 +239,132 @@ class Query:
                         header_positions[mapping] = i   
                 except KeyError:
                     continue
+        
             # Iterate over each row in the CSV file
             for row in csv_reader:
                 
+                i = 0
                 for contents in row:
-                    if not contents.startswith("https") and not contents.startswith("//mm.digikey"):
-                        text += contents
+                    
+                    header_present = SEMANTIC_HEADERS.get(headers[i])
 
-                # text = ' '.join(row)
+                    if not header_present:
+                        i = i + 1
+                        continue
+
+                    do_hash = False
+
+                    if not contents.startswith("https") and not contents.startswith("//mm.digikey") and not headers[i] == "standard_pricing":
+                        
+                        header = headers[i]
+
+                        if header == "quantity_available":
+                            
+                            if contents:
+                                contents = normalize_qty(contents)
+ 
+                        # if header in NORMALIZED_FIELDS:
+                        contents = contents.replace("µ", "u")
+                            # contents = contents.replace("V", "")
+                        contents = contents.replace("W", "")
+
+                        if header == FIELD_FOOTPRINT:
+                            contents = normalize_footprint("r",contents)
+                            qualifier = f"{header}:{contents}"
+                            do_hash = True
+                        elif header == FIELD_TOLERANCE:
+                            contents = normalize_tolerance(contents)
+                            qualifier = f"{header}:{contents}"
+                            do_hash = True
+                        elif header == FIELD_TEMP_COEFF:
+                            qualifier = f"{header}: {contents}"
+                            do_hash = True
+                        elif header == FIELD_POWER:
+                            contents = normalize_power(contents)
+                            qualifier = f"{header}: {contents}"
+                            do_hash = True
+                        elif header == FIELD_VR or header == FIELD_VOLTAGE_OUT or header == FIELD_CURRENT_OUT:
+                            qualifier = f"{header}:{contents}"
+                            do_hash = True
+                        elif header == FIELD_FREQUENCY_STABILITY or header == FIELD_FREQUENCY_STABILITY \
+                            or header == FIELD_FREQUENCY_TOLERANCE or header == FIELD_FREQUENCY:
+                            contents = contents.replace("±", "")
+                            qualifier = f"{header}:{contents}"
+                            do_hash = True
+                        elif header == FIELD_PRODUCT_STATUS or header == FIELD_APPLICATION:
+                            do_hash = False
+                        elif header == FIELD_MANUFACTURER:
+                            do_hash = False
+                        elif header == FIELD_TYPE:
+                            contents = contents.split(" ")[0]
+                            print("CONTENTS", contents)
+                            qualifier = f"{header}:{contents}"
+                            do_hash = True
+                        elif is_flash_field(header):
+                            contents = normalize_flash_field(header, contents)
+                            qualifier = f"{header}:{contents}"
+                            do_hash = True
+
+                            # print(contents)
+                        else:
+
+                            print("CONTENTS ABOUT TO SEARCH", contents)
+                                # pattern = re.compile(r"\b[0-9]+\s[A-Za-z]+\b", re.IGNORECASE)
+                            pattern = re.compile(get_regex(header), re.IGNORECASE)
+                            match = pattern.search(contents)
+
+                            if match:
+                                    
+                                    items = match.group().split(" ")
+                                    unit = items[1].upper()
+                                    val = items[0]
+                                    norm_unit = MULTIPLIERS.get(unit)
+                                    norm_val = float(val) * norm_unit
+                                    # contents = str(norm_val) + " F"
+
+                                    sem_hash = self.hash_value(str(norm_val))
+                                    
+                                    index = sem_hash % len(semantics)
+                                    semantic_val = semantics[index]
+                                    # semantic_mapping[val] = semantic_val
+
+                                    sem_hash = self.hash_value(match.group())
+                                    index = sem_hash % len(upper_semantics)
+                                    upper_val = upper_semantics[index]
+
+                                    semantic_val = f"{semantic_val} {upper_val}"
+                                    semantic_mapping[match.group()] = semantic_val                                    
+                                    
+                                    if semantic_val:
+                                        contents = semantic_val
+                                    else:
+                                        contents = SEMANTICS.get(items[1].upper())
+                        if do_hash:
+                            print("DOING HASH", contents, qualifier)
+                            sem_hash = self.hash_value(contents)
+                            index = sem_hash % len(semantics)
+                            semantic_val = semantics[index]
+                            sem_hash = self.hash_value(qualifier)
+                            index = sem_hash % len(upper_semantics)
+                            semantic_val = f"{semantic_val} {upper_semantics[index]}"
+                            semantic_mapping[contents] = semantic_val
+                            contents = semantic_val
+
+                        nom_header = NORMALIZED_HEADER.get(header)
+                        
+                        if nom_header:
+                            header = nom_header
+
+                        text += f"{header}:{contents};"
+                        qualifier = ""
+                    i = i + 1
+
+                print(text)
                 embedding = self.get_embedding(text)
                 component_embeddings.append(embedding)
                 rows.append(row)
                 text = ""
+
 
         # For the list of embeddings, create an index
         # See https://python.langchain.com/docs/integrations/vectorstores/faiss/
@@ -243,7 +384,13 @@ class Query:
         index = faiss.IndexFlatIP(embeddings_matrix.shape[1])
         index.add(embeddings_matrix)
 
-        return [component_embeddings, rows, header_positions]
+        print(semantic_mapping)
+        with open("semantic_mapping.txt", 'w') as file:
+
+            for mapping in semantic_mapping:
+                file.write(f"{mapping} - {semantic_mapping[mapping]}")
+                file.write("\n")
+        return [component_embeddings, rows, header_positions, semantic_mapping]
 
     def prepare_component_library_from_database(self):
         all_embeddings = self.load_embeddings()
@@ -256,6 +403,7 @@ class Query:
             rows = all_embeddings[component]["rows"]
             positions = all_embeddings[component]["header_positions"]
             pricing_data = all_embeddings[component]["pricing"]
+            semantics = all_embeddings[component]["semantics"]
 
             if component_embeddings:
                 component_index = self.convert_embeddings_to_index(component_embeddings)
@@ -263,7 +411,8 @@ class Query:
                     "index": component_index,
                     "rows": rows,
                     "header_positions" : positions,
-                    "pricing" : pricing_data 
+                    "pricing" : pricing_data,
+                    "semantics": semantics
                 }
 
         search_embeddings = all_embeddings[COMPONENT_ANY]["embeddings"]
@@ -274,6 +423,13 @@ class Query:
 
         print("Components library completed")
 
+    def normalize_query(self, query):
+        embedding = self.get_embedding(query)
+        query_vector = np.array([embedding]).astype("float32")
+        faiss.normalize_L2(query_vector)
+
+        return query_vector
+    
     def do_search(self, component,query_vector):
         if component:
             search_index = self.indices[component]["index"]
@@ -288,16 +444,69 @@ class Query:
 
             return [self.prepare_rows(component, found_data), flat_indices, flat_distances]
         else:
-            print("Invalid component to do query") 
+            print("Invalid component to do query")
+
+    def pre_normalize_query(self,component, q):
+
+        # re_match = re.match(r"[0-9]+\.[0-9]+\s[A-Za-z][A-Za-z]", "0.1 uF", re.IGNORECASE)
+        # re_match = re.match(VALUE_REGEX, q, re.IGNORECASE)
+
+        queries = q.split(",")
+        query_list = []
+        test = ""
+        print("QUERIES ", queries)
+
+        for query in queries:
+
+            # pattern = re.compile(r"\b[0-9]+\s[A-Za-z]+\b", re.IGNORECASE)
+            pattern = re.compile(get_regex(FIELD_CAPACITANCE), re.IGNORECASE)
+            match = pattern.search(query)
+            val_semantics = self.indices[component]["semantics"]
+
+            if match:
+                
+                print("GROUP", match.group())
+                norm_val = val_semantics[match.group()]
+                q = "Clock Frequency " + norm_val
+                # query_list.append(norm_val)
+                # replaced = pattern.sub(str(norm_unit), q)
+            else:
+                
+                items = query.split(" ")
+                print("ITEMS", items)
+
+                if len(items) == 1:
+                    q = items[0]
+                
+                else:
+
+                    norm_val = items[1]
+                    sem = val_semantics.get(norm_val)
+                    if sem:
+                        norm_val = val_semantics[norm_val]
+                    else:
+                        items_len = len(items)
+                        i = 2
+
+                        while i < items_len:
+                            norm_val += " " + items[i]
+                            i = i + 1
+                        
+                
+                    print("NORM VAL ", norm_val)
+                    q = f"{items[0]} {norm_val}"
+
+            test += q + " "
+
+        print(test)
+        return test
 
     def do_query(self, query:str, designator:str, auto_bom = False):
 
-        embedding = self.get_embedding(query)
         component = self.designator_to_component(designator)
-        query_vector = np.array([embedding]).astype("float32")
-        faiss.normalize_L2(query_vector)
 
         if component is COMPONENT_ANY:
+            query_vector = self.normalize_query(query)
             search_index = self.indices[COMPONENT_ANY]["index"]
             distances,indices = search_index.search(query_vector, self.results_to_consider)
             flat_indices = np.array(indices).flatten().tolist()
@@ -305,15 +514,21 @@ class Query:
             best_search = flat_indices[0]
 
             if best_search <= len(COMPONENT_SPECIFIC_NAME):
-                results, indices, flat_distances = self.do_search(COMPONENT_SPECIFIC_NAME[best_search], query_vector)   
-        else:
+                queries = self.pre_normalize_query(COMPONENT_SPECIFIC_NAME[best_search], query)
+                query_vector = self.normalize_query(queries)
+                results, indices, flat_distances = self.do_search(COMPONENT_SPECIFIC_NAME[best_search], query_vector)
 
-            results, indices, flat_distances =  self.do_search(component, query_vector)
-
-        if auto_bom:
-            return [results, indices, flat_distances]
+                return [results, indices, flat_distances]
         else:
-            return results
+            queries = self.pre_normalize_query(self.designator_to_component(designator), query)
+            embedding = self.get_embedding(queries)
+            print("Pre-norm query ", queries)
+            query_vector = np.array([embedding]).astype("float32")
+            faiss.normalize_L2(query_vector)
+
+            results, indices, distances = self.do_search(component, query_vector)
+
+            return [results,indices, distances]
 
     def prepare_rows(self, component, rows):
         positions = self.indices[component]["header_positions"]
@@ -375,13 +590,27 @@ class Query:
         
         return self.prepare_rows(component, rows)
 
-q = Query()
+    def print_results(self, results):
+
+        for result in results:
+            print(result)
+        
+    def print_results_key(self, results, keys):
+
+        for result in results:
+            
+            text = ""
+            for key in keys:
+                text += result.get(key) + " "
+            
+            print(text)
+
+
+q = Query()                  
 digikey_query = DigikeyAPIHook(default_configs=q.get_default_configs())
 
 def main():
-    # digikey_query.init()
-    # digikey_query.update_parts_catalogue()
-    q.generate_new_embeddings_for_components()
-
+    q.prepare_component_library_from_database()
+    results, indices, _ = q.do_query("Manufacturer YAGEO,Resistance 100 kOhms","R1", True)
 if __name__ == "__main__":
     main()

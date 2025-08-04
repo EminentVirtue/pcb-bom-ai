@@ -61,10 +61,12 @@ const bom_popup = document.getElementById("bomPrompt");
 const bp_close = document.getElementById("closeBpPopup");
 const bp_save = document.getElementById("saveBpChoice");
 const component_search = document.getElementById("search");
+const export_bom = document.getElementById("exportBOM");
 
 bp_save.addEventListener("click", handle_save_bom_item);
 bp_close.addEventListener("click", close_bp_popup);
 component_search.addEventListener("keyup", handle_query_request);
+export_bom.addEventListener("click", handle_export_bom);
 
 app.start();
 app.mouse.on(pc.EVENT_MOUSEDOWN, on_mouse_down);
@@ -126,6 +128,14 @@ function format_row(data)
     return content;
 }
 
+function handle_export_bom()
+{
+    const link = document.createElement("a");
+    link.href = "/download-bom";
+    link.download = "bom_test.csv";
+    link.click()
+}
+
 function toggle_popup(popup,visible)
 {
     if(visible)
@@ -168,6 +178,7 @@ function handle_query_request(event)
             fetch(`/request-query?content=${content}&des=${curr_component.textContent}`)
             .then(res => res.json())
             .then(data => {
+                console.log("GOT DATA")
                 populate_table(data);
             })
         } 

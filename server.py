@@ -150,10 +150,6 @@ def get_parts():
 def update_part():
     designator = request.args.get('des')
     index = request.args.get('index')
-
-    print("Index is ")
-    print(index)
-
     update_part_kidcad(designator, int(index))
 
     return jsonify({'message': 'Updated BOM item'})
@@ -162,8 +158,8 @@ def update_part():
 def request_from_query():
     query_content = request.args.get('content')
     query_designator = request.args.get('des')
-    response = query.do_query(query_content, query_designator)
-    return jsonify(response)
+    results, indices, flat_distances = query.do_query(query_content, query_designator)
+    return jsonify(results)
 
 @app.route("/update-qengine")
 def update_component_engine():
@@ -171,12 +167,19 @@ def update_component_engine():
     query.initialize_parts_query_engine()
     return jsonify({'message': 'Updated component engine!'})
 
+@app.route('/download-bom')
+def download_bom():
+    test_export_bom(kicad_bom.build_bom_list_for_csv())
+    path = os.path.join(app.root_path, "databases")
+    return send_from_directory(path, 'user_bom.csv')
+
 @app.route('/export-bom')
 def export_current_bom():
     return jsonify({'message': 'Export successful'})
 
 def test_export_bom(bom_contents):
-    with open("databases/test_bom.csv",'w') as csv_file:
+    path = os.path.join(app.root_path, "databases", "user_bom.csv")
+    with open(path,'w') as csv_file:
         csv_writer = csv.writer(csv_file, delimiter=';', quotechar='"', quoting=csv.QUOTE_ALL)
         csv_writer.writerows(bom_contents)
 
@@ -276,7 +279,6 @@ def update_part_kidcad(designator, index):
         
         content = query.get_current_rows()
 
-
         if index <= len(content):
             
             item = content[index]
@@ -313,7 +315,7 @@ def update_part_kidcad(designator, index):
                     kicad_bom.get_value_mapping()[normalized_value] = []
                     kicad_bom.get_value_mapping()[normalized_value].append(kicad_bom_item)
 
-    test_export_bom(kicad_bom.build_bom_list_for_csv())
+    # test_export_bom(kicad_bom.build_bom_list_for_csv())
 
 def handle_kicad_bom(bom):
 

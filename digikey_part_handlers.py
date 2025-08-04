@@ -1,6 +1,7 @@
 from typing import Any
 from components import *
 from headers import *
+from digikey_fields import *
 
 """
 The idea of this file is to provide handlers to parsing the pertinent data of
@@ -9,29 +10,6 @@ each component we're interested in
 If the handler for a particular part needs to be changed, then all that must be done
 is change it in this file and update the handler in the toml
 """
-
-FIELD_MANUFACTURER = "manufacturer"
-FIELD_PRODUCT_STATUS = "product_status"
-FIELD_PRODUCT_VARIATIONS = "product_variations"
-FIELD_STANDARD_PRICING = "standard_pricing"
-FIELD_QUANTITY_AVAILABLE = "quantity_available"
-FIELD_MANUFACTURER_PN = "manufacturer_product_number"
-FIELD_DK_URL = "product_url"
-FIELD_CAPACITANCE = "Capacitance"
-FIELD_RESISTANCE = "Resistance"
-FIELD_FREQUENCY = "Frequency"
-FIELD_FOOTPRINT = "Package / Case"
-FIELD_VOLTAGE_OUT = "Voltage - Output (Min/Fixed)"
-FIELD_TOLERANCE = "Tolerance"
-FIELD_POWER = "Power (Watts)"
-FIELD_VR = "Voltage - Rated"
-FIELD_DATASHEET_URL = "datasheet_url"
-FIELD_MEMORY_SIZE = "Memory Size"
-FIELD_MATING = "Pitch - Mating"
-
-FIELD_TAPE_REEL = "Tape & Reel (TR)"
-FIELD_CUT_TAPE = "Cut Tape (CT)"
-FIELD_DIGIREEL = "Digi-Reel®"
 
 PRICES_QUERY_POS = 0
 PRICES_DB_POS = 1
@@ -56,6 +34,32 @@ DIGIKEY_FIELD_TO_HEADER = {
     FIELD_MEMORY_SIZE: HEADER_VALUE
 }
 
+NORMALIZED_FIELDS = [
+    FIELD_CAPACITANCE,
+    FIELD_RESISTANCE,
+    FIELD_VR,
+    FIELD_FOOTPRINT,
+    FIELD_STANDARD_PRICING,
+    FIELD_TOLERANCE,
+    FIELD_POWER
+]
+
+NORMALIZED_HEADER = {
+    FIELD_FOOTPRINT: "footprint",
+    FIELD_POWER : "power",
+    FIELD_VR: "voltage",
+    FIELD_ESR: "ESR",
+    FIELD_VOLTAGE_OUT: "voltage out",
+    FIELD_CURRENT_OUT: "current out",
+    FIELD_WRITE_CYCLE_TIME: "write cycle time"
+}
+
+def get_regex(field):
+
+    if field == FIELD_RESISTANCE or field == FIELD_CAPACITANCE \
+        or field == FIELD_ESR or field == FIELD_FREQUENCY or field == FIELD_CLOCK_FREQUENCY:
+        return r"([+-]?(?=\.\d|\d)(?:\d+)?(?:\.?\d*))(?:[Ee]([+-]?\d+))? [A-Za-z0-9]+"
+    
 # For parameters having a nested map as the value
 def handle_special_field(product, field):
     
@@ -88,9 +92,9 @@ def handle_special_field(product, field):
 
             for sp in standard_pricing:
                 break_quantity = sp["break_quantity"]
-                total_price = sp["total_price"]
-                prices_query.append(str(break_quantity) + f" in {name} for {total_price} ")
-                prices_plain.append(str(break_quantity) + f" for {total_price}")
+                unit_price = sp["unit_price"]
+                prices_query.append(f"{str(break_quantity)} pieces in {name} for ${unit_price} each |")
+                prices_plain.append(str(break_quantity) + f" for ${unit_price} each")
 
             prices_db.append((" ").join(prices_plain))
 
@@ -112,6 +116,9 @@ def generic_component_handler(component:int,products: Any, configs: Any):
     entry = []
     headers = []
     pricing = [[FIELD_TAPE_REEL, FIELD_CUT_TAPE, FIELD_DIGIREEL]]
+
+    min_quantity = 0
+    max_quantity = 0
     
     if fields is None:
         return entry 
@@ -135,7 +142,19 @@ def generic_component_handler(component:int,products: Any, configs: Any):
         for i in range(num):
             
             if i < cfields_len:
-                row.append(str(product_dict[common_fields[i]]))
+
+                field = None
+                if common_fields[i] == FIELD_UNIT_PRICE:
+                    field = f"${str(product_dict[common_fields[i]])}"
+                else:
+                    field = str(product_dict[common_fields[i]])
+
+                if common_fields[i] == FIELD_QUANTITY_AVAILABLE:
+                    min_quantity = min(min_quantity, int(field))
+                    max_quantity = max(max_quantity, int(field))
+                
+                row.append(field)
+                    
             if i < cfields_special_len:
                 prices, data = handle_special_field(product_dict, common_fields_special[i])
 
